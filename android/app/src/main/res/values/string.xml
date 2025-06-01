@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Control Gastos</string>
+    <string name="facebook_app_id">TU_FACEBOOK_APP_ID_AQUI</string>
+    <string name="facebook_client_token">TU_FACEBOOK_CLIENT_TOKEN_AQUI</string>
+    <string name="fb_login_protocol_scheme">fbTU_FACEBOOK_APP_ID_AQUI</string>
+</resources>

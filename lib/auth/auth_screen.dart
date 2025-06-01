@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
-
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -20,7 +19,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   final _loginFormKey = GlobalKey<FormState>();
   final _registerFormKey = GlobalKey<FormState>();
   
-  // Controladores de texto
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
   final _registerNameController = TextEditingController();
@@ -36,7 +34,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     
-    // Verificar si ya hay un usuario autenticado
     _auth.authStateChanges().listen((User? user) {
       if (user != null) {
         Navigator.pushReplacement(
@@ -59,7 +56,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // Mostrar mensajes de error
   void _showError(String message) {
     setState(() {
       _errorMessage = message;
@@ -76,7 +72,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Mostrar mensajes de éxito
   void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -88,7 +83,6 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Inicio de sesión con email y contraseña
   Future<void> _signInWithEmail() async {
     if (_loginFormKey.currentState!.validate()) {
       setState(() {
@@ -104,11 +98,12 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         _showSuccess('¡Inicio de sesión exitoso!');
       } on FirebaseAuthException catch (e) {
         _showError(_getErrorMessage(e.code));
+      } catch (e) {
+        _showError('Error de conexión. Inténtalo de nuevo.');
       }
     }
   }
 
-  // Registro con email y contraseña
   Future<void> _registerWithEmail() async {
     if (_registerFormKey.currentState!.validate()) {
       if (_registerPasswordController.text != _confirmPasswordController.text) {
@@ -127,17 +122,16 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           password: _registerPasswordController.text,
         );
         
-        // Actualizar el perfil del usuario con el nombre
         await userCredential.user?.updateDisplayName(_registerNameController.text.trim());
-        
         _showSuccess('¡Cuenta creada exitosamente!');
       } on FirebaseAuthException catch (e) {
         _showError(_getErrorMessage(e.code));
+      } catch (e) {
+        _showError('Error de conexión. Inténtalo de nuevo.');
       }
     }
   }
 
-  // Inicio de sesión con Google
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
@@ -145,6 +139,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     });
 
     try {
+      // Cerrar sesión anterior de Google si existe
+      await _googleSignIn.signOut();
+      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       
       if (googleUser != null) {
@@ -158,14 +155,17 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
         await _auth.signInWithCredential(credential);
         _showSuccess('¡Inicio de sesión con Google exitoso!');
       } else {
+        // Usuario canceló el proceso de login
         setState(() => _isLoading = false);
       }
+    } on FirebaseAuthException catch (e) {
+      _showError(_getErrorMessage(e.code));
     } catch (e) {
-      _showError('Error al iniciar sesión con Google');
+      setState(() => _isLoading = false);
+      _showError('Error al iniciar sesión con Google. Inténtalo de nuevo.');
     }
   }
 
-  // Inicio de sesión con Facebook
   Future<void> _signInWithFacebook() async {
     setState(() {
       _isLoading = true;
@@ -173,171 +173,172 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     });
 
     try {
-      final LoginResult result = await FacebookAuth.instance.login();
+      // Cerrar sesión anterior de Facebook si existe
+      await FacebookAuth.instance.logOut();
+      
+      final LoginResult result = await FacebookAuth.instance.login(
+        permissions: ['email', 'public_profile'],
+      );
       
       if (result.status == LoginStatus.success) {
+        final AccessToken accessToken = result.accessToken!;
+        
         final OAuthCredential credential = FacebookAuthProvider.credential(
-          result.accessToken!.token,
+          accessToken.token,
         );
         
         await _auth.signInWithCredential(credential);
         _showSuccess('¡Inicio de sesión con Facebook exitoso!');
+      } else if (result.status == LoginStatus.cancelled) {
+        // Usuario canceló el proceso de login
+        setState(() => _isLoading = false);
       } else {
         setState(() => _isLoading = false);
-        _showError('Error al iniciar sesión con Facebook');
+        _showError('Error al iniciar sesión con Facebook: ${result.message ?? 'Error desconocido'}');
       }
+    } on FirebaseAuthException catch (e) {
+      _showError(_getErrorMessage(e.code));
     } catch (e) {
-      _showError('Error al iniciar sesión con Facebook');
+      setState(() => _isLoading = false);
+      _showError('Error al iniciar sesión con Facebook. Inténtalo de nuevo.');
     }
   }
 
-  // Obtener mensaje de error traducido
   String _getErrorMessage(String errorCode) {
     switch (errorCode) {
-      case 'user-not-found':
-        return 'No existe una cuenta con este correo electrónico';
-      case 'wrong-password':
-        return 'Contraseña incorrecta';
-      case 'email-already-in-use':
-        return 'Ya existe una cuenta con este correo electrónico';
-      case 'weak-password':
-        return 'La contraseña debe tener al menos 6 caracteres';
-      case 'invalid-email':
-        return 'Correo electrónico no válido';
-      case 'account-exists-with-different-credential':
-        return 'Ya existe una cuenta con este correo usando un método diferente';
-      default:
-        return 'Error de autenticación';
+      case 'user-not-found': return 'No existe una cuenta con este correo electrónico';
+      case 'wrong-password': return 'Contraseña incorrecta';
+      case 'email-already-in-use': return 'Ya existe una cuenta con este correo electrónico';
+      case 'weak-password': return 'La contraseña debe tener al menos 6 caracteres';
+      case 'invalid-email': return 'Correo electrónico no válido';
+      case 'account-exists-with-different-credential': return 'Ya existe una cuenta con este correo usando un método diferente';
+      case 'invalid-credential': return 'Las credenciales proporcionadas son inválidas';
+      case 'user-disabled': return 'Esta cuenta ha sido deshabilitada';
+      case 'too-many-requests': return 'Demasiados intentos. Inténtalo más tarde';
+      case 'operation-not-allowed': return 'Operación no permitida';
+      default: return 'Error de autenticación: $errorCode';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF667eea),
-              Color(0xFF764ba2),
-            ],
+            colors: [Color(0xFF667eea), Color(0xFF764ba2)],
           ),
         ),
         child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Card(
-                elevation: 20,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: Card(
+                  elevation: 20,
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
-                    color: Colors.white.withOpacity(0.95),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Logo y título
-                      const Icon(
-                        Icons.account_balance_wallet,
-                        size: 60,
-                        color: Color(0xFF667eea),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Control de Gastos',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
+                  child: Container(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.account_balance_wallet,
+                          size: 60,
+                          color: Color(0xFF667eea),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Administra tus finanzas de manera inteligente',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Control de Gastos',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
-                      
-                      // Pestañas
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Administra tus finanzas de manera inteligente',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        child: TabBar(
-                          controller: _tabController,
-                          indicator: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.withOpacity(0.3),
-                                spreadRadius: 1,
-                                blurRadius: 5,
-                              ),
+                        const SizedBox(height: 32),
+                        
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: TabBar(
+                            controller: _tabController,
+                            indicator: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.3),
+                                  spreadRadius: 1,
+                                  blurRadius: 5,
+                                ),
+                              ],
+                            ),
+                            labelColor: const Color(0xFF667eea),
+                            unselectedLabelColor: Colors.grey,
+                            tabs: const [
+                              Tab(text: 'Iniciar Sesión'),
+                              Tab(text: 'Registrarse'),
                             ],
                           ),
-                          labelColor: const Color(0xFF667eea),
-                          unselectedLabelColor: Colors.grey,
-                          tabs: const [
-                            Tab(text: 'Iniciar Sesión'),
-                            Tab(text: 'Registrarse'),
-                          ],
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      
-                      // Contenido de las pestañas
-                      SizedBox(
-                        height: 320,
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _buildLoginForm(),
-                            _buildRegisterForm(),
-                          ],
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Divider
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: Colors.grey[300])),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(
-                              'O continúa con',
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                        const SizedBox(height: 24),
+                        
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.4,
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              SingleChildScrollView(child: _buildLoginForm()),
+                              SingleChildScrollView(child: _buildRegisterForm()),
+                            ],
                           ),
-                          Expanded(child: Divider(color: Colors.grey[300])),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Botones de redes sociales
-                      _buildSocialButtons(),
-                      
-                      if (_isLoading)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 20),
-                          child: CircularProgressIndicator(),
                         ),
-                    ],
+                        
+                        const SizedBox(height: 24),
+                        
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey[300])),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(
+                                'O continúa con',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: Colors.grey[300])),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        _buildSocialButtons(),
+                        
+                        if (_isLoading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 20),
+                            child: CircularProgressIndicator(),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -370,7 +371,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _loginPasswordController,
             obscureText: true,
@@ -385,7 +386,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -420,7 +421,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _registerEmailController,
             keyboardType: TextInputType.emailAddress,
@@ -438,7 +439,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _registerPasswordController,
             obscureText: true,
@@ -456,7 +457,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _confirmPasswordController,
             obscureText: true,
@@ -471,7 +472,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
               return null;
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 30),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -496,7 +497,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           child: ElevatedButton.icon(
             onPressed: _isLoading ? null : _signInWithGoogle,
             icon: Image.asset(
-              'assets/google_logo.png', // Necesitas agregar este asset
+              'assets/google_logo.png',
               height: 20,
               width: 20,
               errorBuilder: (context, error, stackTrace) {
